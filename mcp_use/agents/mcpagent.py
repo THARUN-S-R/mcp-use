@@ -8,7 +8,7 @@ to provide a simple interface for using MCP tools with different LLMs.
 import logging
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import TypeVar
+from typing import TypeVar, Optional
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.agents.output_parsers.tools import ToolAgentAction
@@ -66,6 +66,7 @@ class MCPAgent:
         agent_id: str | None = None,
         api_key: str | None = None,
         base_url: str = "https://cloud.mcp-use.com",
+        metadata : Optional[dict[str]] | None = None
     ):
         """Initialize a new MCPAgent instance.
 
@@ -115,6 +116,7 @@ class MCPAgent:
         # User can provide a template override, otherwise use the imported default
         self.system_prompt_template_override = system_prompt_template
         self.additional_instructions = additional_instructions
+        self.metadata = metadata if metadata else {}
 
         # Either client or connector must be provided
         if not client and len(self.connectors) == 0:
@@ -247,7 +249,8 @@ class MCPAgent:
         agent = create_tool_calling_agent(llm=self.llm, tools=self._tools, prompt=prompt)
 
         # Use the standard AgentExecutor
-        executor = AgentExecutor(agent=agent, tools=self._tools, max_iterations=self.max_steps, verbose=self.verbose)
+        executor = AgentExecutor(agent=agent, tools=self._tools, max_iterations=self.max_steps, verbose=self.verbose,
+                                 metadata=self.metadata)
         logger.debug(f"Created agent executor with max_iterations={self.max_steps}")
         return executor
 
