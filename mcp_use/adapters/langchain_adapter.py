@@ -8,6 +8,7 @@ import re
 from typing import Any, NoReturn
 
 from jsonschema_pydantic import jsonschema_to_pydantic
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, ToolException
 from mcp.types import (
     CallToolResult,
@@ -24,6 +25,7 @@ from ..connectors.base import BaseConnector
 from ..errors.error_formatting import format_error
 from ..logging import logger
 from .base import BaseAdapter
+from .pydantic_check import schema_has_runnable_config
 
 
 class LangChainAdapter(BaseAdapter):
@@ -138,7 +140,7 @@ class LangChainAdapter(BaseAdapter):
                 """
                 raise NotImplementedError("MCP tools only support async operations")
 
-            async def _arun(self, **kwargs: Any) -> Any:
+            async def _arun(self, config: RunnableConfig = None, **kwargs: Any) -> Any:
                 """Asynchronously execute the tool with given arguments.
 
                 Args:
@@ -153,6 +155,9 @@ class LangChainAdapter(BaseAdapter):
                 logger.debug(f'MCP tool: "{self.name}" received input: {kwargs}')
 
                 try:
+                    found, cfg_name = schema_has_runnable_config(self.args_schema)
+                    if found and config is not None:
+                        kwargs[cfg_name] = config
                     tool_result: CallToolResult = await self.tool_connector.call_tool(self.name, kwargs)
                     try:
                         # Use the helper function to parse the result
