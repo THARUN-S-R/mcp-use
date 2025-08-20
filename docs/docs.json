@@ -51,14 +51,33 @@
           {
             "group": "Client Configuration",
             "pages": [
-              "client/client-configuration",
               {
-                "group": "Client Features",
+                "group": "Overview",
+                "icon": "globe",
+                "pages": [
+                  "client/client-configuration",
+                  "client/connection-types",
+                  "client/sandbox",
+                  "client/direct-tool-calls"
+                ]
+              },
+              {
+                "group": "Core Features",
                 "icon": "list-plus",
                 "pages": [
-                  "client/connection-types",
+                  "client/tools",
+                  "client/resources",
+                  "client/prompts"
+                ]
+              },
+              {
+                "group": "Advanced Features",
+                "icon": "sparkle",
+                "pages": [
                   "client/sampling",
-                  "client/elicitation"
+                  "client/elicitation",
+                  "client/notifications",
+                  "client/logging"
                 ]
               }
             ]
@@ -70,7 +89,8 @@
               "agent/llm-integration",
               "agent/server-manager",
               "agent/streaming",
-              "agent/structured-output"
+              "agent/structured-output",
+              "agent/interactive-chat-patterns"
             ]
           },
           {
