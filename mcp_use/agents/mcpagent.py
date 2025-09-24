@@ -435,6 +435,8 @@ class MCPAgent:
         success = False
         if self.metadata:
             config: RunnableConfig = {"metadata": self.metadata}
+        else:
+            config:RunnableConfig  = {}
 
         # Schema-aware setup for structured output
         structured_llm = None
