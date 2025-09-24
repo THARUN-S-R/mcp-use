@@ -10,7 +10,7 @@ import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import TypeVar
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain.agents import create_tool_calling_agent
 from langchain.agents.output_parsers.tools import ToolAgentAction
 from langchain.globals import set_debug
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -18,6 +18,7 @@ from langchain.schema import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain.schema.language_model import BaseLanguageModel
 from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.exceptions import OutputParserException
+from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.schema import StreamEvent
 from langchain_core.tools import BaseTool
 from langchain_core.utils.input import get_color_mapping
@@ -35,6 +36,7 @@ from ..managers.server_manager import ServerManager
 
 # Import observability manager
 from ..observability import ObservabilityManager
+from .agent import AgentExecutor
 from .prompts.system_prompt_builder import create_system_message
 from .prompts.templates import DEFAULT_SYSTEM_PROMPT_TEMPLATE, SERVER_MANAGER_SYSTEM_PROMPT_TEMPLATE
 from .remote import RemoteAgent
@@ -75,6 +77,7 @@ class MCPAgent:
         chat_id: str | None = None,
         retry_on_error: bool = True,
         max_retries_per_step: int = 2,
+        metadata: dict[str] | None = None,
     ):
         """Initialize a new MCPAgent instance.
 
@@ -96,6 +99,7 @@ class MCPAgent:
             callbacks: List of LangChain callbacks to use. If None and Langfuse is configured, uses langfuse_handler.
             retry_on_error: Whether to retry tool calls that fail due to validation errors.
             max_retries_per_step: Maximum number of retries for validation errors per step.
+            metadata: specific data to be passed to tools without passing through llm
         """
         # Handle remote execution
         if agent_id is not None:
@@ -134,6 +138,7 @@ class MCPAgent:
         # Set up observability callbacks using the ObservabilityManager
         self.observability_manager = ObservabilityManager(custom_callbacks=callbacks)
         self.callbacks = self.observability_manager.get_callbacks()
+        self.metadata = metadata if metadata else {}
         self.chat_id = chat_id if chat_id else None
 
         # Either client or connector must be provided
@@ -428,6 +433,8 @@ class MCPAgent:
         start_time = time.time()
         steps_taken = 0
         success = False
+        if self.metadata:
+            config: RunnableConfig = {"metadata": self.metadata}
 
         # Schema-aware setup for structured output
         structured_llm = None
@@ -555,6 +562,7 @@ class MCPAgent:
                                 inputs=inputs,
                                 intermediate_steps=intermediate_steps,
                                 run_manager=run_manager,
+                                config=config,
                             )
 
                             # If we get here, the step succeeded, break out of retry loop
