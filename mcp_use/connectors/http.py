@@ -17,6 +17,7 @@ from mcp_use.auth.oauth import OAuthClientProvider
 from ..auth import BearerAuth, OAuth
 from ..exceptions import OAuthAuthenticationError, OAuthDiscoveryError
 from ..logging import logger
+from ..middleware import CallbackClientSession, Middleware
 from ..task_managers import SseConnectionManager, StreamableHttpConnectionManager
 from .base import BaseConnector
 
@@ -39,6 +40,7 @@ class HttpConnector(BaseConnector):
         elicitation_callback: ElicitationFnT | None = None,
         message_handler: MessageHandlerFnT | None = None,
         logging_callback: LoggingFnT | None = None,
+        middleware: list[Middleware] | None = None,
     ):
         """Initialize a new HTTP connector.
 
@@ -59,6 +61,7 @@ class HttpConnector(BaseConnector):
             elicitation_callback=elicitation_callback,
             message_handler=message_handler,
             logging_callback=logging_callback,
+            middleware=middleware,
         )
         self.base_url = base_url.rstrip("/")
         self.headers = headers or {}
@@ -158,7 +161,7 @@ class HttpConnector(BaseConnector):
             read_stream, write_stream = await connection_manager.start()
 
             # Test if this actually works by trying to create a client session and initialize it
-            test_client = ClientSession(
+            raw_test_client = ClientSession(
                 read_stream,
                 write_stream,
                 sampling_callback=self.sampling_callback,
@@ -167,7 +170,10 @@ class HttpConnector(BaseConnector):
                 logging_callback=self.logging_callback,
                 client_info=self.client_info,
             )
-            await test_client.__aenter__()
+            await raw_test_client.__aenter__()
+
+            # Wrap test client with middleware temporarily for testing
+            test_client = CallbackClientSession(raw_test_client, self.public_identifier, self.middleware_manager)
 
             try:
                 # Try to initialize - this is where streamable HTTP vs SSE difference should show up
@@ -203,32 +209,28 @@ class HttpConnector(BaseConnector):
                 else:
                     self._prompts = []
 
+            # Only McpError is raised from client's initialization because
+            # exceptions are handled internally.
             except McpError as mcp_error:
                 logger.error("MCP protocol error during initialization: %s", mcp_error.error)
                 # Clean up the test client
                 try:
-                    await test_client.__aexit__(None, None, None)
+                    await raw_test_client.__aexit__(None, None, None)
                 except Exception:
                     pass
                 raise mcp_error
 
             except Exception as init_error:
-                # Clean up the test client
+                # This catches non-McpError exceptions, like a direct httpx timeout
+                # but in the most cases this won't happen. It's for safety.
                 try:
-                    await test_client.__aexit__(None, None, None)
+                    await raw_test_client.__aexit__(None, None, None)
                 except Exception:
                     pass
+                raise init_error
 
-                if isinstance(init_error, httpx.HTTPStatusError):
-                    if init_error.response.status_code in [401, 403, 407]:  # Authentication error using status
-                        # Server requires authentication but OAuth discovery failed
-                        raise OAuthAuthenticationError(
-                            f"Server requires authentication (HTTP {init_error.response.status_code}) "
-                            "but OAuth discovery failed. Please provide OAuth configuration manually."
-                        ) from init_error
-                else:
-                    raise init_error
-
+        # Exception from the inner try is propagated here and in
+        # the most cases is an McpError, so checking instances is useless
         except Exception as streamable_error:
             logger.debug(f"Streamable HTTP failed: {streamable_error}")
 
@@ -239,18 +241,10 @@ class HttpConnector(BaseConnector):
                 except Exception:
                     pass
 
-            # Check if this is a 4xx error that indicates we should try SSE fallback
-            # HACK: Still sometimes StreamableHTTP will return other errors, so we still try to fallback to SSE
-            should_fallback = False
-            if isinstance(streamable_error, httpx.HTTPStatusError):
-                if streamable_error.response.status_code in [404, 405]:
-                    should_fallback = True
-                    logger.debug("Streamable HTTP failed: 404/ 405 Not Found/ Method Not Allowed")
-            elif "405 Method Not Allowed" in str(streamable_error) or "404 Not Found" in str(streamable_error):
-                should_fallback = True
-            else:
-                logger.debug("Streamable HTTP failed, falling back to SSE")
-                should_fallback = True
+            # It doesn't make sense to check error types. Because client
+            # always return a McpError, if he can't reach the server
+            # because it's offline, or if it has an auth problem.
+            should_fallback = True
 
             if should_fallback:
                 try:
@@ -263,7 +257,7 @@ class HttpConnector(BaseConnector):
                     read_stream, write_stream = await connection_manager.start()
 
                     # Create the client session for SSE
-                    self.client_session = ClientSession(
+                    raw_client_session = ClientSession(
                         read_stream,
                         write_stream,
                         sampling_callback=self.sampling_callback,
@@ -272,21 +266,30 @@ class HttpConnector(BaseConnector):
                         logging_callback=self.logging_callback,
                         client_info=self.client_info,
                     )
-                    await self.client_session.__aenter__()
+                    await raw_client_session.__aenter__()
+
+                    # Wrap with middleware
+                    self.client_session = CallbackClientSession(
+                        raw_client_session, self.public_identifier, self.middleware_manager
+                    )
                     self.transport_type = "SSE"
 
-                except Exception as sse_error:
-                    if isinstance(sse_error, httpx.HTTPStatusError):
-                        if sse_error.response.status_code in [401, 403, 407]:
-                            raise OAuthAuthenticationError(
-                                f"Server requires authentication (HTTP {sse_error.response.status_code}) "
-                                "but OAuth discovery failed. Please provide OAuth configuration manually."
-                            ) from sse_error
-                    else:
-                        logger.error(
-                            f"Both transport methods failed. Streamable HTTP: {streamable_error}, SSE: {sse_error}"
-                        )
-                        raise sse_error
+                except* Exception as sse_error:
+                    # Get the exception from the ExceptionGroup, and here we will get the correct type.
+                    sse_error = sse_error.exceptions[0]
+                    if isinstance(sse_error, httpx.HTTPStatusError) and sse_error.response.status_code in [
+                        401,
+                        403,
+                        407,
+                    ]:
+                        raise OAuthAuthenticationError(
+                            f"Server requires authentication (HTTP {sse_error.response.status_code}) "
+                            "but auth failed. Please provide auth configuration manually."
+                        ) from sse_error
+                    logger.error(
+                        f"Both transport methods failed. Streamable HTTP: {streamable_error}, SSE: {sse_error}"
+                    )
+                    raise sse_error
             else:
                 raise streamable_error
 
@@ -298,4 +301,5 @@ class HttpConnector(BaseConnector):
     @property
     def public_identifier(self) -> str:
         """Get the identifier for the connector."""
-        return {"type": self.transport_type, "base_url": self.base_url}
+        transport_type = getattr(self, "transport_type", "http")
+        return f"{transport_type}:{self.base_url}"

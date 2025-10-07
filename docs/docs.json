@@ -74,13 +74,14 @@
                 "group": "Advanced Features",
                 "icon": "sparkle",
                 "pages": [
+                  "client/middleware",
                   "client/sampling",
                   "client/elicitation",
                   "client/notifications",
-                  "client/logging",
-                  "client/authentication"
+                  "client/logging"
                 ]
-              }
+              },
+                "client/authentication"
             ]
           },
           {
@@ -152,10 +153,29 @@
         "tab": "Changelog",
         "icon": "history",
         "groups": [
+
           {
             "group": "Changelog",
             "pages": [
-              "changelog"
+                  "changelog/changelog"
+                ]
+          },
+          {
+            "group": "Versions",
+            "pages": [
+                  "changelog/1_3_11"
+                ]
+          }
+        ]
+      },
+      {
+        "tab": "Blog",
+        "icon": "book",
+        "groups": [
+          {
+            "group": "Blog",
+            "pages": [
+              "blog/middleware"
             ]
           }
         ]
