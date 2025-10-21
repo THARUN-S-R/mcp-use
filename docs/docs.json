@@ -241,7 +241,7 @@
           },
           {
             "label": "LangChain Docs",
-            "href": "https://python.langchain.com/"
+            "href": "https://python.langchain_classic.com/"
           }
         ]
       },

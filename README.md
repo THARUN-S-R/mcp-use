@@ -111,7 +111,7 @@ pip install -e .
 
 ### Installing LangChain Providers
 
-mcp_use works with various LLM providers through LangChain. You'll need to install the appropriate LangChain provider package for your chosen LLM. For example:
+mcp_use works with various LLM providers through langchain_classic. You'll need to install the appropriate LangChain provider package for your chosen LLM. For example:
 
 ```bash
 # For OpenAI
@@ -121,7 +121,7 @@ pip install langchain-openai
 pip install langchain-anthropic
 ```
 
-For other providers, check the [LangChain chat models documentation](https://python.langchain.com/docs/integrations/chat/) and add your API keys for the provider you want to use to your `.env` file.
+For other providers, check the [LangChain chat models documentation](https://python.langchain_classic.com/docs/integrations/chat/) and add your API keys for the provider you want to use to your `.env` file.
 
 ```bash
 OPENAI_API_KEY=

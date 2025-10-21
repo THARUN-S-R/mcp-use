@@ -1,4 +1,4 @@
-from langchain.schema import SystemMessage
+from langchain_classic.schema import SystemMessage
 from langchain_core.tools import BaseTool
 
 

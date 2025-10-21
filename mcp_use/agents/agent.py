@@ -18,13 +18,13 @@ from typing import (
 )
 
 import yaml
-from langchain._api.deprecation import AGENT_DEPRECATION_WARNING
-from langchain.agents.agent_iterator import AgentExecutorIterator
-from langchain.agents.agent_types import AgentType
-from langchain.agents.tools import InvalidTool
-from langchain.chains.base import Chain
-from langchain.chains.llm import LLMChain
-from langchain.utilities.asyncio import asyncio_timeout
+from langchain_classic._api.deprecation import AGENT_DEPRECATION_WARNING
+from langchain_classic.agents.agent_iterator import AgentExecutorIterator
+from langchain_classic.agents.agent_types import AgentType
+from langchain_classic.agents.tools import InvalidTool
+from langchain_classic.chains.base import Chain
+from langchain_classic.chains.llm import LLMChain
+from langchain_classic.utilities.asyncio import asyncio_timeout
 from langchain_core._api import deprecated
 from langchain_core.agents import AgentAction, AgentFinish, AgentStep
 from langchain_core.callbacks import (

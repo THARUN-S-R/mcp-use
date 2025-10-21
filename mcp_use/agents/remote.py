@@ -8,7 +8,7 @@ from typing import Any, TypeVar
 from uuid import UUID
 
 import httpx
-from langchain.schema import BaseMessage
+from langchain_classic.schema import BaseMessage
 from pydantic import BaseModel
 
 from ..logging import logger
