@@ -10,14 +10,15 @@ import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import TypeVar
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain.agents.output_parsers.tools import ToolAgentAction
-from langchain.globals import set_debug
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.schema import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain.schema.language_model import BaseLanguageModel
+from langchain_classic.agents import create_tool_calling_agent
+from langchain_classic.agents.output_parsers.tools import ToolAgentAction
+from langchain_classic.globals import set_debug
+from langchain_classic.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_classic.schema import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_classic.schema.language_model import BaseLanguageModel
 from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.exceptions import OutputParserException
+from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.schema import StreamEvent
 from langchain_core.tools import BaseTool
 from langchain_core.utils.input import get_color_mapping
@@ -26,6 +27,7 @@ from pydantic import BaseModel
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 from mcp_use.agents.managers.base import BaseServerManager
 from mcp_use.agents.managers.server_manager import ServerManager
+from mcp_use.agents.agent import AgentExecutor
 
 # Import observability manager
 from mcp_use.agents.observability import ObservabilityManager
@@ -72,8 +74,10 @@ class MCPAgent:
         base_url: str = "https://cloud.mcp-use.com",
         callbacks: list | None = None,
         chat_id: str | None = None,
+        message_id : str | None = None,
         retry_on_error: bool = True,
         max_retries_per_step: int = 2,
+        metadata: dict[str] | None = None,
     ):
         """Initialize a new MCPAgent instance.
 
@@ -95,6 +99,7 @@ class MCPAgent:
             callbacks: List of LangChain callbacks to use. If None and Langfuse is configured, uses langfuse_handler.
             retry_on_error: Whether to retry tool calls that fail due to validation errors.
             max_retries_per_step: Maximum number of retries for validation errors per step.
+            metadata: specific data to be passed to tools without passing through llm
         """
         # Handle remote execution
         if agent_id is not None:
@@ -133,6 +138,8 @@ class MCPAgent:
         # Set up observability callbacks using the ObservabilityManager
         self.observability_manager = ObservabilityManager(custom_callbacks=callbacks)
         self.callbacks = self.observability_manager.get_callbacks()
+        self.metadata = metadata if metadata else {}
+        self.message_id = message_id if message_id else None
 
         # Either client or connector must be provided
         if not client and len(self.connectors) == 0:
@@ -185,8 +192,7 @@ class MCPAgent:
                     logger.info(f"✅ Created {len(self._sessions)} new sessions")
 
                 # Create LangChain tools directly from the client using the adapter
-                await self.adapter.create_all(self.client)
-                self._tools = self.adapter.tools + self.adapter.resources + self.adapter.prompts
+                self._tools = await self.adapter.create_tools(self.client)
                 logger.info(f"🛠️ Created {len(self._tools)} LangChain tools from client")
             else:
                 # Using direct connector - only establish connection
@@ -198,10 +204,7 @@ class MCPAgent:
                         await connector.connect()
 
                 # Create LangChain tools using the adapter with connectors
-                await self.adapter._create_tools_from_connectors(connectors_to_use)
-                await self.adapter._create_resources_from_connectors(connectors_to_use)
-                await self.adapter._create_prompts_from_connectors(connectors_to_use)
-                self._tools = self.adapter.tools + self.adapter.resources + self.adapter.prompts
+                self._tools = await self.adapter._create_tools_from_connectors(connectors_to_use)
                 logger.info(f"🛠️ Created {len(self._tools)} LangChain tools from connectors")
 
             # Get all tools for system message generation
@@ -468,6 +471,10 @@ class MCPAgent:
         start_time = time.time()
         steps_taken = 0
         success = False
+        if self.metadata:
+            config: RunnableConfig = {"metadata": self.metadata}
+        else:
+            config:RunnableConfig  = {}
 
         # Schema-aware setup for structured output
         structured_llm = None
@@ -591,6 +598,7 @@ class MCPAgent:
                                 inputs=inputs,
                                 intermediate_steps=intermediate_steps,
                                 run_manager=run_manager,
+                                config=config,
                             )
 
                             # If we get here, the step succeeded, break out of retry loop
@@ -636,7 +644,9 @@ class MCPAgent:
 
                                 # Add the final response to conversation history if memory is enabled
                                 if self.memory_enabled:
-                                    self.add_to_history(AIMessage(content=f"Structured result: {structured_result}"))
+                                    self.add_to_history(
+                                        AIMessage(content=f"Structured result: {structured_result}", id=self.message_id)
+                                    )
 
                                 logger.info("✅ Structured output successful")
                                 success = True
@@ -661,7 +671,7 @@ class MCPAgent:
                                 # Add this as feedback and continue the loop
                                 inputs["input"] = missing_info_prompt
                                 if self.memory_enabled:
-                                    self.add_to_history(HumanMessage(content=missing_info_prompt))
+                                    self.add_to_history(HumanMessage(content=missing_info_prompt, id=self.message_id))
 
                                 logger.info("🔄 Continuing execution to gather missing information...")
                                 continue
@@ -747,7 +757,9 @@ class MCPAgent:
 
                     # Add the final response to conversation history if memory is enabled
                     if self.memory_enabled:
-                        self.add_to_history(AIMessage(content=f"Structured result: {structured_result}"))
+                        self.add_to_history(
+                            AIMessage(content=f"Structured result: {structured_result}", id=self.message_id)
+                        )
 
                     logger.info("✅ Final structured output successful")
                     success = True
@@ -759,10 +771,10 @@ class MCPAgent:
                     raise RuntimeError(f"Failed to generate structured output after {steps} steps: {str(e)}") from e
 
             if self.memory_enabled:
-                self.add_to_history(HumanMessage(content=query))
+                self.add_to_history(HumanMessage(content=query, id=self.message_id))
 
             if self.memory_enabled and not output_schema:
-                self.add_to_history(AIMessage(content=self._normalize_output(result)))
+                self.add_to_history(AIMessage(content=self._normalize_output(result), id=self.message_id))
 
             logger.info(f"🎉 Agent execution complete in {time.time() - start_time} seconds")
             if not success:
@@ -1029,11 +1041,13 @@ class MCPAgent:
                 if isinstance(output, list):
                     for message in output:
                         if not isinstance(message, ToolAgentAction):
+                            if self.message_id:
+                                message["id"] = self.message_id
                             self.add_to_history(message)
             yield event
 
         if self.memory_enabled:
-            self.add_to_history(HumanMessage(content=query))
+            self.add_to_history(HumanMessage(content=query, id=self.message_id))
 
         # 5. House-keeping -------------------------------------------------------
         # Restrict agent cleanup in _generate_response_chunks_async to only occur
