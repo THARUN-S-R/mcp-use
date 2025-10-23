@@ -25,9 +25,9 @@ from langchain_core.utils.input import get_color_mapping
 from pydantic import BaseModel
 
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
+from mcp_use.agents.agent import AgentExecutor
 from mcp_use.agents.managers.base import BaseServerManager
 from mcp_use.agents.managers.server_manager import ServerManager
-from mcp_use.agents.agent import AgentExecutor
 
 # Import observability manager
 from mcp_use.agents.observability import ObservabilityManager
@@ -74,7 +74,7 @@ class MCPAgent:
         base_url: str = "https://cloud.mcp-use.com",
         callbacks: list | None = None,
         chat_id: str | None = None,
-        message_id : str | None = None,
+        message_id: str | None = None,
         retry_on_error: bool = True,
         max_retries_per_step: int = 2,
         metadata: dict[str] | None = None,
@@ -478,7 +478,7 @@ class MCPAgent:
         if self.metadata:
             config: RunnableConfig = {"metadata": self.metadata}
         else:
-            config:RunnableConfig  = {}
+            config: RunnableConfig = {}
 
         # Schema-aware setup for structured output
         structured_llm = None

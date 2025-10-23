@@ -9,7 +9,7 @@ from typing import Any, NoReturn
 
 from jsonschema_pydantic import jsonschema_to_pydantic
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool, ToolException
+from langchain_core.tools import BaseTool
 from mcp.types import (
     CallToolResult,
     Prompt,
@@ -19,11 +19,11 @@ from mcp.types import (
 from pydantic import BaseModel, Field, create_model
 
 from mcp_use.agents.adapters.base import BaseAdapter
+from mcp_use.agents.adapters.pydantic_check import schema_has_runnable_config
 from mcp_use.client.connectors.base import BaseConnector
 from mcp_use.errors.error_formatting import format_error
 from mcp_use.logging import logger
 from mcp_use.telemetry.telemetry import telemetry
-from mcp_use.agents.adapters.pydantic_check import schema_has_runnable_config
 
 
 class LangChainAdapter(BaseAdapter):
